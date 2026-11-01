@@ -1,0 +1,206 @@
+# Changelog · 更新日志
+
+## 1.0.0
+
+### English
+
+- Initial public release.
+- The mod is named **RollOfTheScout (童子军的命运之骰)**, GUID `com.peakmodding.RollOfTheScout`.
+- 30 classes, each with benefits and drawbacks; host-only install (clients install nothing).
+- Bilingual configuration (Chinese / English), selected automatically by the game language.
+- Host-screen class list panel, effect toasts and overhead class prefix; optional host → client broadcast (Photon custom event 197).
+
+### 中文
+
+- 首个公开发布版本。
+- 模组定名为 **RollOfTheScout（童子军的命运之骰）**，GUID 为 `com.peakmodding.RollOfTheScout`。
+- 30 个职业，各有正负效果；仅房主安装（客机零安装）。
+- 配置文件中英双语，按游戏语言自动切换。
+- 主机屏幕支持职业分配面板 / 效果提示 / 头顶职业前缀；另有可选的主机→客机广播（Photon 自定义事件 197）。
+
+## 1.0.1
+
+### English
+
+- Urgently fixed some issues with the mod configuration file.
+
+### 中文
+
+- 紧急修复了模组配置文件的一些问题。
+
+## 1.0.2
+
+### English
+
+- Add a class introduction document for this mod (**ModClassIntroduction.md**, bilingual in Chinese and English).
+
+### 中文
+
+- 为本模组补充职业介绍文档（**ModClassIntroduction.md**，中英双语）。
+
+## 1.0.3
+
+### English
+
+- Attempted to optimize the mod to some extent:
+  - This initial optimization attempt includes a total of 6 optimization changes (involving `ClassLedger.cs` / `Config.cs` / `HostClassManager.cs`):
+  - 1. O(1) class presence check: added a player-count index, replacing the original `HasClassInRoom` that traversed the ledger.
+  - 2. Added early returns to 16 per-frame functions: if a class is not present, the entire traversal block is skipped → the number of per-frame traversals is roughly halved (exclusive classes drop directly to zero).
+  - 3. Reduced the frequency of two unconsciousness state-transition checks: Fireline Rescue / Protocol Zero changed from per-frame to 0.15s sampling (about 1/9 of the cost, with imperceptible latency).
+  - 4. State-transition detection no longer writes to a string dictionary every frame: writes occur only when the state changes, so steady-state writes are ≈0.
+  - 5. Amortized temporary-item feeding across frames: 4 instantiation entry points were consolidated into one, and the queue processes at most 3 per frame → single-frame peak reduced from 10–30 to 3; a burst of 30 finishes within at most 0.17 seconds.
+  - 6. The default class draw weight of Qu changed from 10 to 5.
+  - Also eliminated: the per-frame `ParseList` allocations in the Scout's luggage item pool / Cook's food item pool, as well as the per-frame service lookup + traversal in `ApplyDaihaoAvatar`.
+
+### 中文
+
+- 尝试对模组进行了一定优化：
+  - 本次初步优化尝试总计6项优化改动（涉及`ClassLedger.cs` /`Config.cs` /`HostClassManager.cs` ）：
+  - 1. 职业在场判定 O(1) ：新增人数索引，替掉原来遍历账本的`HasClassInRoom` 。
+  - 2. 16 个每帧函数加提前返回 ：职业不在场就整块跳过遍历 → 每帧遍历次数约减半（独占职业直接归零）。
+  - 3. 两处昏迷跳变检测降频 ：火线救援 / 零号守则由每帧 → 0.15s 采样（约 1/9 开销，延迟不可感知）。
+  - 4. 跳变检测不再每帧写字符串字典 ：仅状态变化时写，稳态≈0 次。
+  - 5. 临时物品喂食摊帧 ：4 个实例化入口收敛为一处，队列 每帧最多 3 次 → 单帧峰值 10~30 → 3 ，30 次爆发最迟 0.17 秒发完。
+  - 6. 区的默认职业抽取权重 10 → 5 。
+  - 顺带消除：童军行李物品池 / 炊事员食物物品池的 每帧`ParseList` 分配 ，以及`ApplyDaihaoAvatar` 的每帧服务查找+遍历。
+
+
+## 1.0.4
+
+### English
+
+- **Fixed** Astronaut 【NASA】: the repeated, abnormal stacking of the extra bonus for cobweb / flytrap / curse. The detection logic has been improved: 
+    - Root cause: The host reads the state value synchronized back from the remote character, which is subject to delay. The original implementation appended +2.5 and then wrote the baseline as "current value + 2.5"; if the next round still read the old value that had not yet been synchronized, the baseline would be lowered, and when the synchronization arrived it would be recognized as "yet another new increase" → repeated appends every round.
+    - Each of these three statuses now enters its own cooldown after the extra bonus triggers, during which it is neither detected nor increased again. 
+    - Accordingly, a new config entry `[Astronaut] nasaExtraIncreaseCooldown` has been added, default 1.0 (seconds).
+- **Fixed** Leader 【Morale】: the curse and petrify refund applied to affected players when the leader revives could fail to take full effect. The refund logic has been strengthened: 
+    - Root cause: The old implementation read the current value only once at "the moment the Leader revives" to calculate the difference. If the +10 issued when the Leader died had not yet been synchronized back to the host, the difference would be calculated as 0 (or only partially calculated), this rollback would be skipped, and the penalty would remain permanently on the player, accumulating over multiple times into abnormal curse values. This issue is unrelated to the frame-amortization optimization—[Morale] is issued directly via ApplyStatus and does not pass through the temporary-item feeding queue; the real cause is the timing of asynchronous state synchronization.
+    - When the leader revives and triggers the negative-status removal, the amount to refund is now recorded and repeatedly corrected until confirmed complete.
+- **New** **Emote reclass mechanic** (optional, **disabled by default**): 
+    - Performing the 【No No】 emote (`A_Scout_Emote_Nono`) immediately reclasses the player once (same effect as consuming the reclass item), and shares the reclass count with item-based reclass. 
+    - If this emote conflicts with an emote forcibly played by a class effect, the class effect takes priority and no reclass is triggered. 
+    - New config entries: `[General] reclassEmoteEnabled` (default false) and `[General] reclassEmote` (default No No).
+
+### 中文
+
+- **修复** 太空人【我去，老美的NASA这么厉害】的蛛网/捕蝇草/诅咒值额外增加效果的异常连加问题，优化了判定机制：
+    - 根因 ：主机读到的是远端角色同步回来的状态值，存在延迟。原实现追加 +2.5 后把基线写成「当前值+2.5」；下一轮若仍读到尚未同步的旧值，基线就被下调，等同步到达时又被识别成「又一笔新增加」→ 每轮反复追加。
+    - 现在这三种状态在触发额外增加后会各自进入冷却，冷却期内不再检测、也不再追加。
+    - 相应地，新增配置项 `[太空人] NASA-额外增加-冷却`，默认值1.0（秒）。
+- **修复** 领袖【士气】在领袖复活时，对受影响玩家的诅咒与石化回退未能完全生效的问题，加强了回退逻辑：
+    - 根因 ：旧实现只在「领袖复活那一刻」读一次当前值算差额。若领袖死亡时下发的 +10 尚未同步回主机，差额会算成 0（或只算出一部分），这次回退被跳过，惩罚就永久留在玩家身上，多次累积出现异常诅咒值。该问题与摊帧优化无关 —— 【士气】走`ApplyStatus` 直接下发，不经过临时物品喂食队列；真正原因是异步状态同步的时序。
+    - 现在领袖复活触发负面消除效果时，会登记应回退量并反复校正（每0.6秒；6秒超时告警），直至确认完成。
+- **新增** **表情转职机制**（可选，**默认禁用**）：
+    - 玩家做出【不行不行】表情（`A_Scout_Emote_Nono`）后会立即转职一次（与食用转职物品一致），并与物品转职共用转职次数。
+    - 若转职表情与职业效果强制播放的表情重复冲突，则以职业效果优先，不会触发转职。
+    - 新增配置项 `[通用] 转职-表情启用`（默认 false）与 `[通用] 转职-表情`（默认 不行不行）。
+
+## 1.0.5
+
+### English
+
+- **Fixed** Langwang 【Premium Berry】: the "purple kingberry" was mistakenly written as the "yellow kingberry", and the internal-test change had not been fully applied. 
+    - All occurrences have now been corrected to the purple kingberry (`Kingberry Purple`); the config entries have been changed to `[Langwang] premiumBerryPurpleKingberryItem` / `premiumBerryPurpleKingberryWeight`, and `[Langwang] kingberryItems` / `[Cook] logisticsFoodPool` no longer contain `Kingberry Yellow`.
+- **Fixed** MilesSoul 【Seal Power】: when a client MilesSoul player used Scout gem items repeatedly at high frequency, the petrify value could be deducted extra or even reduced to zero. 
+    - Root cause: lost updates caused by absolute write-back combined with asynchronous synchronization** — a client's `petrifyAmount` is asynchronously synced back to the host by the **owner client**. The original implementation accumulated each evaluated petrification reduction into a pending queue, then after a 0.35s delay wrote it back using `HostApi.SetPetrify` (`RPC_SyncPetrify`, an **absolute assignment**):
+        1. Under high-frequency use, the `cur` value read by the host lags behind the client's true value;
+        2. After the pending queue has accumulated multiple -5s, it writes back absolutely using the stale `cur - pending`;
+        3. This absolute assignment also overwrites the in-flight +7 increment that has already been used but not yet synced to the host → **an extra deduction**;
+        4. Repeating this cycle can drive petrification down to 0.
+    - The absolute write-back for the petrify reduction now waits until the petrify value has been **quiet for 0.75 seconds** (deferred by at most 4 seconds during continuous use), so it no longer overwrites in-flight increases that have not yet been synced to the host; the detection threshold is now strictly greater than 2.5.
+- **New** The number of Scoutmasters spawned by MilesSoul 【Soul Hindrance】 present on the field at the same time is now capped at 4. 
+    - This cap is hard-coded and has no config entry.
+
+### 中文
+
+- **修复** 榔王【精品大果】：“紫荔莓”误写为“黄荔莓”，内测修改未完全更新的问题。
+    - 现已全部修正为紫荔莓（`Kingberry Purple`），配置项改为 `[榔王] 精品大果-紫荔莓物品` / `精品大果-紫荔莓权重`，`荔莓物品` 与 `后勤保障-食物池` 不再包含 `Kingberry Yellow`。
+- **修复** 残魂【封印之力】：客机残魂连续高频使用童军宝石道具时，石化值可能被额外扣除甚至清零的问题。
+    - 根因：绝对写回+异步同步的丢更新——客机的 `petrifyAmount` 由**属主客户端**异步同步回主机。原实现把每次判定的减石化量累积到待办，延迟 0.35s 后用 `HostApi.SetPetrify`（`RPC_SyncPetrify`，**绝对赋值**）写回：
+        1. 高频使用时，主机读到的 `cur` 落后于客机真实值；
+        2. 待办累积了多次 -5 后，按过期的 `cur - pending` 绝对写回；
+        3. 该绝对赋值把「已经使用、但尚未同步到主机」的在途 +7 增量一并覆盖 → **额外扣除**；
+        4. 反复循环即可把石化扣到 0。
+    - 减石化的绝对写回现在会等待石化值**安静 0.75秒**后执行（持续使用时最多推迟4秒），不再覆盖尚未同步到主机的在途增量；判定阈值改为严格大于2.5。
+- **新增** 残魂【众魂阻挠】效果生成的童军领队 的 场上存在数量上限，固定为4。
+    - 此项为硬编码，无配置项。
+
+## 1.0.6
+
+### English
+
+- **New** **Class introduction panel**: while the class-assignment panel is shown (default key: Tab), an extra panel now appears right below it showing **your own class's** keywords and a short introduction, so players can understand their class without opening the class document. The text follows the game language (Chinese / English). This is available on the host's screen, in the main mod's client mode, and in the optional client display addon. Only the local player's class is shown, not the whole class list.
+- **New** **Class intro compatibility**: the host now also broadcasts the class **keywords** and **intro** tables (Photon custom event 197, kinds 4 / 5, throttled to "class set changed" or once per 30 s). A client addon or older local copy that does not know a class added by a newer main mod now falls back to the host-provided text — so **updating the main mod no longer requires updating the client display addon** to see the new class's introduction. Local text is still preferred, so each client keeps its own language for known classes.
+- **Fixed** Firefighter 【Fireline Rescue】: a player carried by the firefighter could stay "attached" to the carrier after waking up and could not climb; the same happened again after death and revive.
+    - Root cause: in vanilla, `CharacterCarrying.Update` drops the carried player **only on the carrier's owning client**, while `RPCA_Die` / `ReviveCharacter` / `RPCA_ReviveAtPosition` never clear `isCarried` / `carrier`. If that single `RPCA_Drop` is missed, the victim keeps `carrier` forever; `CharacterCarrying.FixedUpdate` then applies a force of 500 toward the carrier every frame (looks like being stuck to the carrier, and climbing is impaired). Death and revive reuse the same Character object, so the state survives them. This mod makes that moment common: 【Fireline Rescue】 teleports the firefighter right onto the fainted player, and 【Warm Embrace】 heals the victim **on the carrier's back**, so the victim often wakes up exactly there — the very instants when vanilla would drop them.
+    - The host now broadcasts the vanilla `RPCA_Drop` (`RpcTarget.All`) whenever a drop was due but did not happen, so players who installed nothing are fixed as well.
+    - Also hardened in 1.0.6: the victim-side cleanup now runs for the **host's own character** too (previously local characters were skipped entirely, so a host carried by a client could stay glued forever); the watchdog now requires the inconsistent state to persist for 0.5 s before acting, so an in-flight `RPCA_StartCarry` / `RPCA_PassOut` (sent by different clients, with no cross-sender ordering guarantee) is never undone by mistake.
+- **Fixed** Firefighter 【Fireline Rescue】: the "cannot trigger while carrying a player" rule is now also enforced at execution time. Previously only the scheduling step checked it, so a firefighter who picked a player up during the 3 s delay was still teleported — dragging the carried player along through the per-frame carry force.
+- **Fixed** MilesSoul 【Cursed Soul】: a client MilesSoul could start with **15** curse instead of the intended **20** (15 from 【Cursed Soul】 plus 5 from 【Soul Hindrance】 on entering the level).
+    - Root cause: the initial 15 and the per-level 5 were sent through **different channels**. The initial value used an absolute write with idempotent corrections; the +5 used a relative increment. A relative increment can be silently dropped by the vanilla `AddStatus` guards while a client is still initialising, and the correction loop only knew about the 15 — so it could also overwrite the +5 back to 15. In addition, the protection baseline was recorded from a stale host-side copy of a remote client (remote status changes made through the RPC path are not pushed back to the host by vanilla), producing baseline values like 17.5.
+    - Fix: the initial curse and this level's +5 are now **merged into one absolute, idempotent write** (`15 + 5 = 20`), which the existing correction loop re-asserts. 【Soul Hindrance】 now records the **intended** baseline (`baseline + 5`) instead of reading back a possibly half-synced value, and the same-frame initial grant is skipped by the new-level handler so it can never become 25.
+- **Improved** **Performance / bandwidth** (no gameplay change):
+    - The class panel text is cached by a `(ViewID, class, nickname)` signature and the TMP panel update is version-gated — holding the panel key no longer rebuilds every line (and re-lays out TMP) every frame.
+    - Class name / keyword / intro tables are no longer re-sent with every 2 s snapshot; they are sent only when the set of classes changes or every 30 s (late joiners still receive them). This removes roughly 4-5 kbit/s of redundant reliable traffic per client in a full room.
+    - The carry-state watchdog reads the vanilla `CharacterCarrying.character` field directly instead of calling `GetComponent<Character>()` for **every character every frame**.
+    - The overhead name prefix caches its per-name state component (previously `GetComponent` for every player every frame).
+    - MilesSoul curse protection now throttles repeat restores (2.5 s fast retries, then every 20 s) and logs sparsely; a stale host-side copy previously caused two RPCs **and** one log line per second, indefinitely.
+    - Observed in the tested session: a third-party mod (`AlwaysDisplayPlayerName`) emitted ~79,000 error lines, which is a major external stutter source; this mod emitted ~3,700 log lines in total.
+
+### 中文
+
+- **新增** **职业介绍板块**：按键显示职业分配面板时（默认 Tab），面板下方会额外显示**本人职业**的关键词与简介，玩家不必翻阅职业文档就能快速了解自己的职业。文本随游戏语言（中文 / 英文）。主机屏幕、主模组客机模式、以及可选的客机显示附属模组均支持；只显示本机玩家自己的职业，不列出全部职业。
+- **新增** **职业介绍兼容**：主机现在额外广播职业**关键词**与**简介**表（Photon 自定义事件 197，Kind 4 / 5；仅在「职业集合变化」或每 30 秒发送一次）。当主模组新增职业、而客机上的附属模组 / 旧版本地文案表还不认识该职业时，会**退回使用主机广播的文本** —— 因此**主模组更新后不必同步更新附属模组**也能看到新职业的介绍。已知职业仍优先使用本地文案，各客户端保持自己的语言。
+- **修复** 救火队员【火线救援】：被救火队员背起的玩家苏醒后仍"吸附"在背人者身上、无法攀爬；死亡复活后再次吸附。
+    - 根因：原版 `CharacterCarrying.Update` 的自动放下**只在背人者的拥有者客户端执行**，而 `RPCA_Die` / `ReviveCharacter` / `RPCA_ReviveAtPosition` 都不会清理 `isCarried` / `carrier`。一旦那一次 `RPCA_Drop` 没有执行，被背者就永久保留 `carrier`；`CharacterCarrying.FixedUpdate` 随后每帧朝背人者施加 500 的力（表现为吸附、无法攀爬），且死亡复活沿用同一个 Character 对象，状态不会清零。本模组的【火线救援】恰好让该时机变得高频：先把救火队员传送到昏迷者身上，再由【温暖臂膀】在背上治疗促使受害者在背上苏醒 —— 苏醒正是原版唯一会触发放下的时刻。
+    - 现在改由主机在"本该放下却没放下"时代为广播原版 `RPCA_Drop`（`RpcTarget.All`），因此未安装任何模组的玩家也能被修复。
+    - 1.0.6 进一步加固：被背者侧的清理现在对**主机自己的角色**同样执行（此前完全跳过本地角色，导致主机被客机背起时同样可能永久吸附）；并改为"异常状态持续 0.5 秒"才动手，避免与正在进行的 `RPCA_StartCarry` / `RPCA_PassOut`（由不同客户端发送，跨发送端无顺序保证）抢跑、误拆正常的背人。
+- **修复** 救火队员【火线救援】：在"自身背着玩家时无法触发"这一限制之外，执行阶段也会再检查一次。此前只有登记阶段检查，若救火队员在 3 秒延迟内背起了别的玩家，仍会被强行传送 —— 被背者会因每帧的背人追力被一起拖走。
+- **修复** 残魂【受诅残魂】：客机的残魂开局诅咒可能是 **15** 而不是应有的 **20**（【受诅残魂】15 + 【众魂阻挠】本层 +5）。
+    - 根因：初始 15 与每层 +5 走了**两条不同通道** —— 初始值用「绝对赋值 + 幂等校正」，+5 用「相对增量」。相对增量在客机尚未初始化完成时会被原版 `AddStatus` 的守卫静默丢弃；而校正循环只知道目标 15，甚至会把已经加上去的 +5 覆盖回 15。另外，诅咒保护基准是**从主机侧读到的远端副本**记录的（原版在 RPC 路径下不会把主机下发的状态变化回推给主机），会记录出 17.5 这类"只加了一半"的值。
+    - 修复：初始诅咒与本层 +5 现在**合并为一次绝对、幂等的写入**（15 + 5 = 20），由既有校正循环反复校正；【众魂阻挠】改为直接记录**期望基准**（基准 + 5），不再读回可能只同步了一半的值；开局同帧的初始发放会登记并让新关卡处理跳过，因此也不会变成 25。
+- **优化** **性能 / 带宽**（不改变任何职业效果）：
+    - 职业分配面板文本按 `(ViewID, 职业, 昵称)` 签名缓存，TMP 面板按版本号跳过重排 —— 按住面板键时不再每帧重建每一行。
+    - 职业名 / 关键词 / 简介表不再随每 2 秒快照重发，只在职业集合变化或每 30 秒补发一次（中途加入者仍能收到）；满员房约占去掉每客户端 4~5 kbit/s 的冗余可靠流量。
+    - 背人状态自愈补丁改为直接读取原版 `CharacterCarrying.character` 字段，不再对**每帧每个角色**调用 `GetComponent<Character>()`。
+    - 头顶职业前缀的状态组件改为缓存（此前每帧每个玩家都调用一次 `GetComponent`）。
+    - 残魂诅咒保护改为节流重试（前几次 2.5 秒、之后 20 秒）并稀疏打日志；此前主机副本滞后会导致**每秒 2 条 RPC + 1 条日志**且无限持续。
+    - 本次实测日志中：第三方模组 `AlwaysDisplayPlayerName` 产生了约 **79000** 条 Error 行，是明显的卡顿外部来源；本模组自身日志总量约 **3700** 行。
+
+## 1.0.7
+
+### English
+
+- **New class** **ATacv** (31st class, `ATacv = 31`), built from rope and heartbreak:
+    - 【Bringing the Wife Along】a rope every level (empty slot first, otherwise spawned at your feet).
+    - 【Heartache】each rope you genuinely drop adds +10 injury — with a **use-event shield**: a loss only counts when it happens within 1 s of a vanilla drop channel (`CharacterItems.DropItemRpc` / `DropItemFromSlotRPC` / `DoDropping`) firing, so deploying a rope or burning a rope spool out of fuel costs nothing. Config entry 【Heartache - drop only】 (default on); if none of those drop methods can be found on the current game build, the mod falls back to the old behaviour and says so in the log.
+    - 【Taking In Concubines】each rope gained adds −10 injury (floors at 0).
+    - 【The Silent One】every 15 s a check runs; if you are not speaking at that moment you gain +15 extra stamina (vanilla `AnimatedMouth.isSpeaking` detection, same channel as Daihao 【Hello Hello】).
+    - 【Hanging From the Southeast Branch】staying on a rope continuously for more than 3 s costs +100 injury, once per hang (`data.isRopeClimbing`).
+    - 【Dressed Up As a Fool】**implemented as a local (client-side) re-dress**: straw hat + green skin + a 50/50 combo of (normal eyes + eating mouth) / (angry eyes + cat mouth) + cowboy outfit. It works by writing the player's cosmetic data through the game's own (private static) `CharacterCustomization.GetCustomizationData` / `SetCustomizationData` and refreshing that character's `CharacterCustomization` on this client, so it is **only visible on clients that have this mod installed** — vanilla clients still see the normal outfit. Configurable via `外观-启用` / `外观-套餐` / `外观-绿色皮肤` / `外观-禁止自动覆盖` / `外观-导出部位表` (the last one dumps every available part name+index to the log so the combo can be pinned exactly; a re-check every 5 s re-applies the look if vanilla reverts it).
+- All five implemented effects are configurable under the new `ATacv` section (bilingual descriptions: Chinese for a Chinese game language, English otherwise).
+- Class intro text (`ClassIntroText.cs`) added for the host-screen intro panel; `ModClassIntroduction.md` documents the class in both languages.
+- **Fixed** the class panel (hold `Tab`) printing its title over and over: `DrawClassList` inserted the title line into the **list returned by the cached `BuildClassListLines()`**, so the IMGUI fallback appended one `[职业分配] 按 Tab 显示` line **every frame** — the panel grew without bound (tens of thousands of duplicate title lines, plus an O(n) insert per frame). The title is now drawn separately and the cached list is never mutated.
+- **Changed** `转职-表情启用` (`reclassEmoteEnabled`) now defaults to **on**, so performing the 【不行不行】(No No) emote reclasses you (it still shares the per-run reclass count — set the option back to false if you do not want accidental reclasses).
+- **Changed** `转职-次数` (`reclassCount`) now defaults to **1000** (effectively unlimited; was 1). The real limit is class capacity: each reclass re-rolls by weight among the classes that are not yet full, and when every class is full the attempt does nothing and consumes no count.
+- **New** **Perk system (batch 1)**: class effects are being split into independently combinable **perks**; every level each player draws **4~5 distinct perks** (configurable range) instead of being assigned a fixed class. New `Perks` config section: `启用` / `模式` (Replace = no class assignment at all, the default; Overlay = keep classes and add perks) / `每关最少` / `每关最多` / `允许重复` / `提示` / `怪谈-启用` / `怪谈-权重` (default 1 = same weight as normal perks), plus one on/off switch per perk. In replace mode the class panel (hold the display key) lists each player's perks instead of classes.
+    - Batch 1 ships 12 perks: 【周期物资】【冲刺体质】【无限体力】【高代谢】【沉默回体】【挂绳易伤】【净化体质】【困倦缠身】【饿鬼】【拾荒癖】 + creepypasta 【翻跟头的人】(forced backflip + 60 drowsiness every 60 s) and 【别做表情】(performing **any** emote kills you instantly through vanilla `RPCA_Die`).
+    - The remaining ~110 effects of the 31 classes still live in the old class code and will be migrated in batches; until then replace mode draws from a 12-entry pool.
+
+### 中文
+
+- **新增职业** **ATacv**（第 31 个职业，`ATacv = 31`），围绕绳索与心碎：
+    - 【带妻出行】每关自带一条绳索（优先空物品栏，满了在脚下生成）。
+    - 【心痛】真正丢弃绳索时，每失去 1 条 +10 损伤 —— 带**使用事件屏蔽**：只有原版丢弃通道（`CharacterItems.DropItemRpc` / `DropItemFromSlotRPC` / `DoDropping`）触发后 1 秒内的减少才结算，展开绳索 / 绳索燃料耗尽一律不计。配置项「心痛-仅纯丢弃」默认开启；若当前游戏版本找不到这些丢弃方法，会自动退回旧判定并在日志提示。
+    - 【收编后宫】物品栏绳索每增加 1 条 −10 损伤（最低到 0）。
+    - 【沉默者】每 15 秒检测一次，检测瞬间没在讲话则 +15 额外体力（走原版 `AnimatedMouth.isSpeaking`，与待皓【喂喂喂】同一通道）。
+    - 【自挂东南枝】连续挂绳超过 3 秒一次性 +100 损伤，同一次挂绳只惩罚一次（`data.isRopeClimbing`）。
+    - 【啥子装出行】**已实现为本地换装**：草帽 + 绿色皮肤 + （50% 等大的眼睛 + 像在吃东西的嘴 / 50% 愤怒眼 + 猫猫嘴）+ 牛仔衣。做法是用原版自己的（private static）`CharacterCustomization.GetCustomizationData` / `SetCustomizationData` 改该玩家的外观数据，再让本机这名角色的 `CharacterCustomization` 重新套一遍，因此**只在装有本模组的客户端上可见**，未装模组的玩家仍是原样。可通过 `外观-启用` / `外观-套餐` / `外观-绿色皮肤` / `外观-禁止自动覆盖` / `外观-导出部位表` 调整（最后一项会把全部可选部位名与索引打到日志，便于精确指定；每 5 秒巡检一次，原版改回去会自动重新套用）。
+- 已实现的五个效果全部可在新的 `ATacv` 配置板块里调整（中英双语说明，按游戏语言自动切换）。
+- `ClassIntroText.cs` 补齐职业介绍文本（主机面板可见）；`ModClassIntroduction.md` 中英双语补充该职业。
+- **新增** **词条系统（第一批）**：把职业效果拆成可独立组合的**词条**，每关为每名玩家抽取 **4~5 条不同词条**（数量区间可配），不再固定分配职业。新增 `词条` 配置板块：`启用` / `模式`（替换＝完全不分配职业，默认；叠加＝保留职业并额外抽词条）/ `每关最少` / `每关最多` / `允许重复` / `提示` / `怪谈-启用` / `怪谈-权重`（默认 1 = 与普通词条同权重），另有每条词条一个开关。替换模式下按住职业显示键会列出每人的词条，而不是职业。
+    - 第一批共 12 条：【周期物资】【冲刺体质】【无限体力】【高代谢】【沉默回体】【挂绳易伤】【净化体质】【困倦缠身】【饿鬼】【拾荒癖】，以及怪谈词条【翻跟头的人】（每 60 秒强制后空翻并 +60 困倦）与【别做表情】（做出**任何**表情立刻死亡，走原版 `RPCA_Die`）。
+    - 31 个职业里其余约 110 条效果仍在旧职业代码中，将分批迁移；在此之前替换模式只在 12 条词条里抽。
+- **修复** 按住 `Tab` 的职业面板把标题重复刷屏：`DrawClassList` 把标题行插进了 `BuildClassListLines()` **返回的缓存列表对象本身**，而 IMGUI 回退路径每帧都会执行一次，于是「[职业分配] 按 Tab 显示」**逐帧累积**（面板无限变长、上万行重复标题，并且每帧 O(n) 插入导致卡顿）。现在标题单独绘制，缓存列表不再被修改。
+- **调整** `转职-表情启用`（`reclassEmoteEnabled`）默认改为**开启**：做【不行不行】表情即可转职（仍与物品转职共用每局转职次数；不想误触就把它改回 false）。
+- **调整** `转职-次数`（`reclassCount`）默认改为 **1000**（等同于不限制，原为 1）。真正的限制是职业名额：每次转职都会在**尚未占满**的其他职业里按权重重抽，所有职业都满时本次不生效且不消耗次数。

@@ -1,0 +1,9 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- 本机实际路径（此文件被 .gitignore 排除，不参与提交） -->
+    <PeakRoot>E:\SteamLibrary\steamapps\common\PEAK</PeakRoot>
+    <BepInExCore>E:\SteamLibrary\steamapps\common\PEAK\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+
+</Project>
